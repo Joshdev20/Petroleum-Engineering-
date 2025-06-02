@@ -1,0 +1,855 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Petroleum Engineering Department Management System</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+    <script src="https://www.gstatic.com/firebasejs/11.8.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/11.8.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/11.8.1/firebase-database-compat.js"></script>
+    <style>
+        .toast { transition: opacity 0.5s; }
+        .toast-hidden { opacity: 0; display: none; }
+        .sidebar { transition: transform 0.3s ease-in-out; }
+        .backdrop { transition: opacity 0.3s ease-in-out; }
+        .login-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 30; }
+        .login-content { background: white; padding: 20px; border-radius: 8px; width: 90%; max-width: 400px; margin: 100px auto; }
+        @media (max-width: 640px) {
+            .sidebar { transform: translateX(-100%); width: 250px; }
+            .sidebar-open { transform: translateX(0); }
+            .backdrop-open { opacity: 0.5; pointer-events: auto; }
+            .main-content { transition: transform 0.3s ease-in-out; }
+            .main-content-shifted { transform: translateX(250px); }
+            .touch-button { padding: 0.75rem 1.5rem; font-size: 1.1rem; }
+            table { display: block; overflow-x: auto; white-space: nowrap; }
+            canvas { max-height: 300px; }
+            #students, #courses, #users { width: 100%; overflow-x: hidden; }
+            #students form, #courses form, #users form { display: flex; flex-direction: column; gap: 1rem; }
+            #students form input, #students form select, #courses form input, #courses form select, #users form input, #users form select { padding: 1rem; font-size: 1rem; width: 100%; box-sizing: border-box; }
+            #students form label, #courses form label, #users form label { font-size: 1rem; margin-bottom: 0.25rem; }
+            #students .flex, #courses .flex, #users .flex { flex-direction: column; gap: 1rem; }
+            #students .flex button, #courses .flex button, #users .flex button { width: 100%; padding: 1rem; font-size: 1.1rem; }
+            #students table, #courses table, #users table { width: 100%; overflow-x: hidden; }
+            #students table th, #students table td, #courses table th, #courses table td, #users table th, #users table td { font-size: 0.9rem; padding: 0.75rem; min-width: 0; white-space: normal; word-wrap: break-word; }
+            #students table th, #courses table th, #users table th { background-color: #e5e7eb; }
+            #students table tr, #courses table tr, #users table tr { display: flex; flex-direction: column; border-bottom: 1px solid #e5e7eb; margin-bottom: 0.5rem; }
+            #students table td, #courses table td, #users table td { padding: 0.5rem 0; }
+            #students .mt-4, #courses .mt-4, #users .mt-4 { flex-direction: column; gap: 1rem; align-items: center; width: 100%; }
+            #students .mt-4 span, #courses .mt-4 span, #users .mt-4 span { margin: 0.5rem 0; }
+            #students .mt-4 button, #courses .mt-4 button, #users .mt-4 button { width: 100%; padding: 1rem; font-size: 1.1rem; }
+        }
+        @media (min-width: 641px) and (max-width: 1024px) {
+            .touch-button { padding: 0.5rem 1rem; font-size: 1rem; }
+            canvas { max-height: 400px; }
+        }
+        @media (min-width: 1025px) {
+            canvas { max-height: 500px; }
+        }
+        .gradient-bg { background: linear-gradient(135deg, #1e3a8a, #3b82f6); }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans">
+    <div class="flex min-h-screen relative">
+        <aside id="sidebar" class="sidebar bg-gradient-to-b from-blue-900 to-blue-700 text-white w-64 p-4 fixed h-full z-20">
+            <h1 class="text-xl font-bold mb-4 flex items-center">
+                <i class="fa-solid fa-university mr-2"></i> DSU Petroleum Eng.
+            </h1>
+            <ul class="space-y-2">
+                <li><button id="dashboardBtn" class="w-full text-left p-2 hover:bg-blue-600 rounded flex items-center"><i class="fa-solid fa-chart-bar mr-2"></i> Dashboard</button></li>
+                <li><button id="studentsBtn" class="w-full text-left p-2 hover:bg-blue-600 rounded flex items-center"><i class="fa-solid fa-user-graduate mr-2"></i> Students</button></li>
+                <li><button id="coursesBtn" class="w-full text-left p-2 hover:bg-blue-600 rounded flex items-center"><i class="fa-solid fa-book mr-2"></i> Courses</button></li>
+                <li><button id="facultyBtn" class="w-full text-left p-2 hover:bg-blue-600 rounded flex items-center"><i class="fa-solid fa-chalkboard-teacher mr-2"></i> Faculty</button></li>
+                <li><button id="usersBtn" class="w-full text-left p-2 hover:bg-blue-600 rounded flex items-center"><i class="fa-solid fa-users mr-2"></i> Manage Users</button></li>
+                <li><button id="logoutBtn" class="w-full text-left p-2 hover:bg-blue-600 rounded flex items-center"><i class="fa-solid fa-sign-out-alt mr-2"></i> Logout</button></li>
+            </ul>
+            <div id="userInfo" class="mt-4 text-sm"></div>
+        </aside>
+        <div id="backdrop" class="backdrop fixed inset-0 bg-black opacity-0 pointer-events-none z-10"></div>
+
+        <main id="mainContent" class="flex-1 p-4 sm:p-6 sm:ml-64 main-content">
+            <header class="gradient-bg text-white p-4 rounded-lg shadow mb-6 flex items-center">
+                <button id="sidebarToggle" class="sm:hidden text-white focus:outline-none mr-4">
+                    <i class="fa-solid fa-bars fa-lg"></i>
+                </button>
+                <div>
+                    <h1 class="text-xl sm:text-2xl font-bold">Delta State University - Oleh Campus</h1>
+                    <p class="text-sm sm:text-base">Petroleum Engineering Department Management System</p>
+                </div>
+            </header>
+
+            <div id="toast" class="toast fixed top-4 right-4 p-4 rounded-lg shadow-lg text-white toast-hidden"></div>
+
+            <section id="dashboard" class="section bg-white p-4 sm:p-6 rounded-lg shadow">
+                <h2 class="text-lg sm:text-xl font-semibold mb-4 flex items-center"><i class="fa-solid fa-chart-bar mr-2"></i> Dashboard</h2>
+                <canvas id="studentsChart" class="max-w-full"></canvas>
+            </section>
+
+            <section id="students" class="section bg-white p-4 sm:p-6 rounded-lg shadow hidden">
+                <h2 class="text-lg sm:text-xl font-semibold mb-4 flex items-center"><i class="fa-solid fa-user-graduate mr-2"></i> Student Management</h2>
+                <div class="mb-4">
+                    <input type="text" id="studentSearch" placeholder="Search students..." class="w-full border p-2 rounded-lg focus:ring-2 focus:ring-blue-500">
+                </div>
+                <form id="studentForm" class="space-y-4 mb-6" style="display: none;">
+                    <input type="hidden" id="studentId">
+                    <div>
+                        <label class="block text-sm font-medium">Name</label>
+                        <input type="text" id="studentName" class="w-full border p-2 rounded-lg focus:ring-2 focus:ring-blue-500" required>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium">Matric Number (FNG/YY/YY/NNNNNN)</label>
+                        <input type="text" id="studentMatric" class="w-full border p-2 rounded-lg focus:ring-2 focus:ring-blue-500" pattern="FNG/[0-9]{2}/[0-9]{2}/[0-9]{6}" placeholder="FNG/22/23/293536" required>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium">Level</label>
+                        <select id="studentLevel" class="w-full border p-2 rounded-lg focus:ring-2 focus:ring-blue-500" required>
+                            <option value="100">100 Level</option>
+                            <option value="200">200 Level</option>
+                            <option value="300">300 Level</option>
+                            <option value="400">400 Level</option>
+                            <option value="500">500 Level</option>
+                        </select>
+                    </div>
+                    <div class="flex space-x-2">
+                        <button type="submit" id="studentSubmit" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 touch-button"><i class="fa-solid fa-plus mr-2"></i> Add Student</button>
+                        <button type="button" onclick="clearStudentForm()" class="bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 touch-button"><i class="fa-solid fa-eraser mr-2"></i> Clear</button>
+                    </div>
+                </form>
+                <table class="w-full border-collapse">
+                    <thead>
+                        <tr class="bg-gray-200">
+                            <th class="border p-2 cursor-pointer" onclick="sortTable('students', 'name')">Name <i class="fa-solid fa-sort"></i></th>
+                            <th class="border p-2 cursor-pointer" onclick="sortTable('students', 'matric')">Matric Number <i class="fa-solid fa-sort"></i></th>
+                            <th class="border p-2 cursor-pointer" onclick="sortTable('students', 'level')">Level <i class="fa-solid fa-sort"></i></th>
+                            <th class="border p-2">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="studentTable"></tbody>
+                </table>
+                <div class="mt-4 flex justify-between">
+                    <button onclick="changePage('students', -1)" class="bg-blue-600 text-white px-4 py-2 rounded-lg disabled:opacity-50 touch-button"><i class="fa-solid fa-chevron-left mr-2"></i> Previous</button>
+                    <span id="studentPageInfo"></span>
+                    <button onclick="changePage('students', 1)" class="bg-blue-600 text-white px-4 py-2 rounded-lg disabled:opacity-50 touch-button">Next <i class="fa-solid fa-chevron-right ml-2"></i></button>
+                </div>
+            </section>
+
+            <section id="courses" class="section bg-white p-4 sm:p-6 rounded-lg shadow hidden">
+                <h2 class="text-lg sm:text-xl font-semibold mb-4 flex items-center"><i class="fa-solid fa-book mr-2"></i> Course Management</h2>
+                <div class="mb-4">
+                    <input type="text" id="courseSearch" placeholder="Search courses..." class="w-full border p-2 rounded-lg focus:ring-2 focus:ring-blue-500">
+                </div>
+                <form id="courseForm" class="space-y-4 mb-6" style="display: none;">
+                    <input type="hidden" id="courseId">
+                    <div>
+                        <label class="block text-sm font-medium">Course Code (PETNNN)</label>
+                        <input type="text" id="courseCode" class="w-full border p-2 rounded-lg focus:ring-2 focus:ring-blue-500" pattern="PET[0-9]{3}" placeholder="PET101" required>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium">Course Title</label>
+                        <input type="text" id="courseTitle" class="w-full border p-2 rounded-lg focus:ring-2 focus:ring-blue-500" required>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium">Credit Units</label>
+                        <input type="number" id="courseUnits" min="1" class="w-full border p-2 rounded-lg focus:ring-2 focus:ring-blue-500" required>
+                    </div>
+                    <div class="flex space-x-2">
+                        <button type="submit" id="courseSubmit" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 touch-button"><i class="fa-solid fa-plus mr-2"></i> Add Course</button>
+                        <button type="button" onclick="clearCourseForm()" class="bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 touch-button"><i class="fa-solid fa-eraser mr-2"></i> Clear</button>
+                    </div>
+                </form>
+                <table class="w-full border-collapse">
+                    <thead>
+                        <tr class="bg-gray-200">
+                            <th class="border p-2 cursor-pointer" onclick="sortTable('courses', 'code')">Course Code <i class="fa-solid fa-sort"></i></th>
+                            <th class="border p-2 cursor-pointer" onclick="sortTable('courses', 'title')">Course Title <i class="fa-solid fa-sort"></i></th>
+                            <th class="border p-2 cursor-pointer" onclick="sortTable('courses', 'units')">Credit Units <i class="fa-solid fa-sort"></i></th>
+                            <th class="border p-2">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="courseTable"></tbody>
+                </table>
+                <div class="mt-4 flex justify-between">
+                    <button onclick="changePage('courses', -1)" class="bg-blue-600 text-white px-4 py-2 rounded-lg disabled:opacity-50 touch-button"><i class="fa-solid fa-chevron-left mr-2"></i> Previous</button>
+                    <span id="coursePageInfo"></span>
+                    <button onclick="changePage('courses', 1)" class="bg-blue-600 text-white px-4 py-2 rounded-lg disabled:opacity-50 touch-button">Next <i class="fa-solid fa-chevron-right ml-2"></i></button>
+                </div>
+            </section>
+
+            <section id="faculty" class="section bg-white p-4 sm:p-6 rounded-lg shadow hidden">
+                <h2 class="text-lg sm:text-xl font-semibold mb-4 flex items-center"><i class="fa-solid fa-chalkboard-teacher mr-2"></i> Faculty Management</h2>
+                <div class="mb-4">
+                    <input type="text" id="facultySearch" placeholder="Search faculty..." class="w-full border p-2 rounded-lg focus:ring-2 focus:ring-blue-500">
+                </div>
+                <form id="facultyForm" class="space-y-4 mb-6" style="display: none;">
+                    <input type="hidden" id="facultyId">
+                    <div>
+                        <label class="block text-sm font-medium">Name</label>
+                        <input type="text" id="facultyName" class="w-full border p-2 rounded-lg focus:ring-2 focus:ring-blue-500" required>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium">Staff ID (STAFF/NNN)</label>
+                        <input type="text" id="facultyStaffId" class="w-full border p-2 rounded-lg focus:ring-2 focus:ring-blue-500" pattern="STAFF/[0-9]{3}" placeholder="STAFF/123" required>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium">Department</label>
+                        <input type="text" id="facultyDept" class="w-full border p-2 rounded-lg focus:ring-2 focus:ring-blue-500" value="Petroleum Engineering" readonly>
+                    </div>
+                    <div class="flex space-x-2">
+                        <button type="submit" id="facultySubmit" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 touch-button"><i class="fa-solid fa-plus mr-2"></i> Add Faculty</button>
+                        <button type="button" onclick="clearFacultyForm()" class="bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 touch-button"><i class="fa-solid fa-eraser mr-2"></i> Clear</button>
+                    </div>
+                </form>
+                <table class="w-full border-collapse">
+                    <thead>
+                        <tr class="bg-gray-200">
+                            <th class="border p-2 cursor-pointer" onclick="sortTable('faculty', 'name')">Name <i class="fa-solid fa-sort"></i></th>
+                            <th class="border p-2 cursor-pointer" onclick="sortTable('faculty', 'staffId')">Staff ID <i class="fa-solid fa-sort"></i></th>
+                            <th class="border p-2">Department</th>
+                            <th class="border p-2">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="facultyTable"></tbody>
+                </table>
+                <div class="mt-4 flex justify-between">
+                    <button onclick="changePage('faculty', -1)" class="bg-blue-600 text-white px-4 py-2 rounded-lg disabled:opacity-50 touch-button"><i class="fa-solid fa-chevron-left mr-2"></i> Previous</button>
+                    <span id="facultyPageInfo"></span>
+                    <button onclick="changePage('faculty', 1)" class="bg-blue-600 text-white px-4 py-2 rounded-lg disabled:opacity-50 touch-button">Next <i class="fa-solid fa-chevron-right ml-2"></i></button>
+                </div>
+            </section>
+
+            <section id="users" class="section bg-white p-4 sm:p-6 rounded-lg shadow hidden">
+                <h2 class="text-lg sm:text-xl font-semibold mb-4 flex items-center"><i class="fa-solid fa-users mr-2"></i> Manage Users</h2>
+                <form id="userForm" class="space-y-4 mb-6">
+                    <div>
+                        <label class="block text-sm font-medium">Email</label>
+                        <input type="email" id="userEmail" class="w-full border p-2 rounded-lg focus:ring-2 focus:ring-blue-500" required>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium">Password</label>
+                        <input type="password" id="userPassword" class="w-full border p-2 rounded-lg focus:ring-2 focus:ring-blue-500" required>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium">Role</label>
+                        <select id="userRole" class="w-full border p-2 rounded-lg focus:ring-2 focus:ring-blue-500" required>
+                            <option value="admin">Admin (Lecturer)</option>
+                            <option value="user">User (Student)</option>
+                        </select>
+                    </div>
+                    <div class="flex space-x-2">
+                        <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 touch-button"><i class="fa-solid fa-plus mr-2"></i> Add User</button>
+                        <button type="button" onclick="clearUserForm()" class="bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 touch-button"><i class="fa-solid fa-eraser mr-2"></i> Clear</button>
+                    </div>
+                </form>
+                <table class="w-full border-collapse">
+                    <thead>
+                        <tr class="bg-gray-200">
+                            <th class="border p-2 cursor-pointer" onclick="sortTable('users', 'email')">Email <i class="fa-solid fa-sort"></i></th>
+                            <th class="border p-2 cursor-pointer" onclick="sortTable('users', 'role')">Role <i class="fa-solid fa-sort"></i></th>
+                        </tr>
+                    </thead>
+                    <tbody id="userTable"></tbody>
+                </table>
+                <div class="mt-4 flex justify-between">
+                    <button onclick="changePage('users', -1)" class="bg-blue-600 text-white px-4 py-2 rounded-lg disabled:opacity-50 touch-button"><i class="fa-solid fa-chevron-left mr-2"></i> Previous</button>
+                    <span id="userPageInfo"></span>
+                    <button onclick="changePage('users', 1)" class="bg-blue-600 text-white px-4 py-2 rounded-lg disabled:opacity-50 touch-button">Next <i class="fa-solid fa-chevron-right ml-2"></i></button>
+                </div>
+            </section>
+        </main>
+
+        <div id="loginModal" class="login-modal">
+            <div class="login-content">
+                <h2 class="text-xl font-bold mb-4">Login</h2>
+                <form id="loginForm">
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium">Email</label>
+                        <input type="email" id="loginEmail" class="w-full border p-2 rounded-lg" required>
+                    </div>
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium">Password</label>
+                        <input type="password" id="loginPassword" class="w-full border p-2 rounded-lg" required>
+                    </div>
+                    <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">Login</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyA-mEdkPaFRTaTy1oHnlQgdkaoewoZFuL4",
+            authDomain: "student-521ee.firebaseapp.com",
+            databaseURL: "https://student-521ee-default-rtdb.firebaseio.com",
+            projectId: "student-521ee",
+            storageBucket: "student-521ee.firebasestorage.app",
+            messagingSenderId: "328232323476",
+            appId: "1:328232323476:web:3fe1c84b2f1f5bf8f12781",
+            measurementId: "G-592Z9SY7WH"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const database = firebase.database();
+
+        const usersRef = database.ref('users');
+        const studentsRef = database.ref('students');
+        const coursesRef = database.ref('courses');
+        const facultyRef = database.ref('faculty');
+
+        let studentsData = [];
+        let coursesData = [];
+        let facultyData = [];
+        let usersData = [];
+        let currentUser = null;
+
+        const pagination = {
+            students: { page: 1, perPage: 10 },
+            courses: { page: 1, perPage: 10 },
+            faculty: { page: 1, perPage: 10 },
+            users: { page: 1, perPage: 10 }
+        };
+
+        const cache = {
+            students: { filtered: [], sorted: [], lastSearch: '', lastSort: null },
+            courses: { filtered: [], sorted: [], lastSearch: '', lastSort: null },
+            faculty: { filtered: [], sorted: [], lastSearch: '', lastSort: null },
+            users: { filtered: [], sorted: [], lastSearch: '', lastSort: null }
+        };
+
+        studentsRef.on('value', (snapshot) => {
+            studentsData = snapshot.val() ? Object.values(snapshot.val()) : [];
+            renderSection('students');
+            renderDashboard();
+        });
+        coursesRef.on('value', (snapshot) => {
+            coursesData = snapshot.val() ? Object.values(snapshot.val()) : [];
+            renderSection('courses');
+        });
+        facultyRef.on('value', (snapshot) => {
+            facultyData = snapshot.val() ? Object.values(snapshot.val()) : [];
+            renderSection('faculty');
+        });
+        usersRef.on('value', (snapshot) => {
+            usersData = snapshot.val() ? Object.values(snapshot.val()) : [];
+            renderSection('users');
+        });
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const sidebar = document.getElementById('sidebar');
+            const sidebarToggle = document.getElementById('sidebarToggle');
+            const backdrop = document.getElementById('backdrop');
+            const mainContent = document.getElementById('mainContent');
+            const loginModal = document.getElementById('loginModal');
+            const loginForm = document.getElementById('loginForm');
+            const userInfo = document.getElementById('userInfo');
+            const logoutBtn = document.getElementById('logoutBtn');
+            const dashboardBtn = document.getElementById('dashboardBtn');
+            const studentsBtn = document.getElementById('studentsBtn');
+            const coursesBtn = document.getElementById('coursesBtn');
+            const facultyBtn = document.getElementById('facultyBtn');
+            const usersBtn = document.getElementById('usersBtn');
+
+            function toggleSidebar() {
+                sidebar.classList.toggle('sidebar-open');
+                backdrop.classList.toggle('backdrop-open');
+                mainContent.classList.toggle('main-content-shifted');
+            }
+
+            sidebarToggle.addEventListener('click', toggleSidebar);
+            backdrop.addEventListener('click', toggleSidebar);
+
+            dashboardBtn.addEventListener('click', () => showSection('dashboard'));
+            studentsBtn.addEventListener('click', () => showSection('students'));
+            coursesBtn.addEventListener('click', () => showSection('courses'));
+            facultyBtn.addEventListener('click', () => showSection('faculty'));
+            usersBtn.addEventListener('click', () => {
+                if (currentUser && currentUser.role === 'admin') {
+                    showSection('users');
+                } else {
+                    showToast('Only admins can manage users', 'error');
+                }
+            });
+
+            function showSection(sectionId) {
+                const sections = document.querySelectorAll('.section');
+                sections.forEach(section => section.classList.add('hidden'));
+
+                const section = document.getElementById(sectionId);
+                if (section) {
+                    section.classList.remove('hidden');
+                    if (sectionId === 'dashboard') renderDashboard();
+                    else if (sectionId === 'students') renderStudents();
+                    else if (sectionId === 'courses') renderCourses();
+                    else if (sectionId === 'faculty') renderFaculty();
+                    else if (sectionId === 'users') renderUsers();
+                }
+
+                if (window.innerWidth <= 640) {
+                    sidebar.classList.remove('sidebar-open');
+                    backdrop.classList.remove('backdrop-open');
+                    mainContent.classList.remove('main-content-shifted');
+                }
+            }
+
+            function showToast(message, type = 'success') {
+                const toast = document.getElementById('toast');
+                if (!toast) return;
+                toast.textContent = message;
+                toast.className = `toast fixed top-4 right-4 p-4 rounded-lg shadow-lg text-white ${type === 'success' ? 'bg-green-600' : 'bg-red-600'}`;
+                toast.classList.remove('toast-hidden');
+                setTimeout(() => toast.classList.add('toast-hidden'), 3000);
+            }
+
+            function generateId() {
+                return Math.random().toString(36).substr(2, 9);
+            }
+
+            let studentsChart = null;
+            let lastChartData = null;
+            function renderDashboard() {
+                const ctx = document.getElementById('studentsChart')?.getContext('2d');
+                if (!ctx || document.getElementById('dashboard').classList.contains('hidden')) return;
+                const levels = ['100', '200', '300', '400', '500'];
+                const counts = levels.map(level => studentsData.filter(s => s.level === level).length);
+                const chartData = JSON.stringify(counts);
+                if (lastChartData !== chartData) {
+                    if (studentsChart) studentsChart.destroy();
+                    studentsChart = new Chart(ctx, {
+                        type: 'bar',
+                        data: { labels: levels.map(l => `${l} Level`), datasets: [{ label: 'Students per Level', data: counts, backgroundColor: 'rgba(59, 130, 246, 0.5)', borderColor: 'rgba(59, 130, 246, 1)', borderWidth: 1 }] },
+                        options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, title: { display: true, text: 'Number of Students' } }, x: { title: { display: true, text: 'Level' } } }, plugins: { legend: { position: 'top' }, title: { display: true, text: 'Student Distribution by Level' } } }
+                    });
+                    lastChartData = chartData;
+                }
+            }
+
+            function changePage(section, delta) {
+                pagination[section].page = Math.max(1, pagination[section].page + delta);
+                renderSection(section);
+            }
+
+            let sortState = { section: null, key: null, ascending: true };
+            function sortTable(section, key) {
+                if (sortState.section === section && sortState.key === key) {
+                    sortState.ascending = !sortState.ascending;
+                } else {
+                    sortState = { section, key, ascending: true };
+                }
+                cache[section].lastSort = { key, ascending: sortState.ascending };
+                cache[section].sorted = [];
+                renderSection(section);
+            }
+
+            function clearStudentForm() { document.getElementById('studentForm').reset(); document.getElementById('studentId').value = ''; document.getElementById('studentSubmit').textContent = 'Add Student'; }
+            function clearCourseForm() { document.getElementById('courseForm').reset(); document.getElementById('courseId').value = ''; document.getElementById('courseSubmit').textContent = 'Add Course'; }
+            function clearFacultyForm() { document.getElementById('facultyForm').reset(); document.getElementById('facultyId').value = ''; document.getElementById('facultySubmit').textContent = 'Add Faculty'; }
+            function clearUserForm() { document.getElementById('userForm').reset(); }
+
+            function validateMatricYear(matric) {
+                const match = matric.match(/^FNG\/(\d{2})\/(\d{2})\/\d{6}$/);
+                if (!match) return false;
+                const currentYear = new Date().getFullYear() % 100;
+                const firstYear = parseInt(match[1], 10);
+                const secondYear = parseInt(match[2], 10);
+                return firstYear >= 20 && firstYear <= currentYear && secondYear === firstYear + 1;
+            }
+
+            function debounce(func, wait) {
+                let timeout;
+                return function(...args) {
+                    clearTimeout(timeout);
+                    timeout = setTimeout(() => func.apply(this, args), wait);
+                };
+            }
+
+            function renderTable(section, data, tableId, createRow) {
+                const table = document.getElementById(tableId);
+                if (!table) return;
+                const start = (pagination[section].page - 1) * pagination[section].perPage;
+                const end = start + pagination[section].perPage;
+                const paginated = data.slice(start, end);
+                const fragment = document.createDocumentFragment();
+                paginated.forEach(item => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = createRow(item);
+                    fragment.appendChild(row);
+                });
+                table.innerHTML = '';
+                table.appendChild(fragment);
+                const pageInfo = document.getElementById(`${section}PageInfo`);
+                if (pageInfo) pageInfo.textContent = `Page ${pagination[section].page} of ${Math.ceil(data.length / pagination[section].perPage) || 1}`;
+                const prevButton = document.querySelector(`#${section} button[onclick*="changePage('${section}', -1)"]`);
+                const nextButton = document.querySelector(`#${section} button[onclick*="changePage('${section}', 1)"]`);
+                if (prevButton) prevButton.disabled = pagination[section].page === 1;
+                if (nextButton) nextButton.disabled = end >= data.length;
+            }
+
+            document.getElementById('studentForm').addEventListener('submit', function(e) {
+                e.preventDefault();
+                if (currentUser && currentUser.role !== 'admin') {
+                    showToast('Only admins can add or edit students', 'error');
+                    return;
+                }
+                const id = document.getElementById('studentId').value || generateId();
+                const matric = document.getElementById('studentMatric').value;
+                if (!/^FNG\/[0-9]{2}\/[0-9]{2}\/\d{6}$/.test(matric)) {
+                    showToast('Matric number must be in format FNG/YY/YY/NNNNNN', 'error');
+                    return;
+                }
+                if (!validateMatricYear(matric)) {
+                    showToast(`Academic session must be valid (e.g., 22/23, where YY ≤ ${new Date().getFullYear() % 100} and second YY is first YY + 1)`, 'error');
+                    return;
+                }
+                const student = { id, name: document.getElementById('studentName').value.trim(), matric, level: document.getElementById('studentLevel').value };
+                if (!student.name) {
+                    showToast('Student name is required', 'error');
+                    return;
+                }
+                if (!id && studentsData.some(s => s.matric === matric)) {
+                    showToast('Matric number already exists', 'error');
+                    return;
+                }
+                studentsRef.child(id).set(student).then(() => {
+                    showToast(id ? 'Student updated successfully' : 'Student added successfully');
+                    pagination.students.page = 1;
+                    const studentSearch = document.getElementById('studentSearch');
+                    if (studentSearch) studentSearch.value = '';
+                    cache.students.lastSearch = '';
+                    clearStudentForm();
+                }).catch(error => {
+                    console.error('Error saving student:', error);
+                    showToast('Failed to save student', 'error');
+                });
+            });
+
+            const debouncedRenderStudents = debounce(() => renderSection('students'), 300);
+            document.getElementById('studentSearch').addEventListener('input', debouncedRenderStudents);
+
+            function renderStudents() {
+                const search = document.getElementById('studentSearch')?.value.toLowerCase() || '';
+                let students = studentsData;
+                if (cache.students.lastSearch !== search || cache.students.filtered.length === 0) {
+                    students = students.filter(s => s.name.toLowerCase().includes(search) || s.matric.toLowerCase().includes(search));
+                    cache.students.filtered = students;
+                    cache.students.lastSearch = search;
+                    cache.students.sorted = [];
+                } else {
+                    students = cache.students.filtered;
+                }
+                if (sortState.section === 'students' && (cache.students.lastSort?.key !== sortState.key || cache.students.lastSort?.ascending !== sortState.ascending)) {
+                    students = [...students].sort((a, b) => {
+                        const valueA = a[sortState.key];
+                        const valueB = b[sortState.key];
+                        return sortState.ascending ? (valueA.localeCompare ? valueA.localeCompare(valueB) : valueA - valueB) : (valueB.localeCompare ? valueB.localeCompare(valueA) : valueB - valueA);
+                    });
+                    cache.students.sorted = students;
+                    cache.students.lastSort = { key: sortState.key, ascending: sortState.ascending };
+                } else if (cache.students.sorted.length > 0) {
+                    students = cache.students.sorted;
+                }
+                renderTable('students', students, 'studentTable', student => `
+                    <td class="border p-2">${student.name}</td>
+                    <td class="border p-2">${student.matric}</td>
+                    <td class="border p-2">${student.level}</td>
+                    <td class="border p-2">
+                        ${currentUser && currentUser.role === 'admin' ? `<button onclick="editStudent('${student.id}')" class="bg-yellow-500 text-white px-2 py-1 rounded hover:bg-yellow-600 touch-button"><i class="fa-solid fa-edit mr-2"></i> Edit</button>` : ''}
+                    </td>
+                `);
+            }
+
+            function editStudent(id) {
+                if (!currentUser || currentUser.role !== 'admin') {
+                    showToast('Only admins can edit students', 'error');
+                    return;
+                }
+                const student = studentsData.find(s => s.id === id);
+                if (student) {
+                    document.getElementById('studentId').value = student.id;
+                    document.getElementById('studentName').value = student.name;
+                    document.getElementById('studentMatric').value = student.matric;
+                    document.getElementById('studentLevel').value = student.level;
+                    document.getElementById('studentSubmit').textContent = 'Update Student';
+                    document.getElementById('studentForm').style.display = 'block';
+                }
+            }
+
+            document.getElementById('courseForm').addEventListener('submit', function(e) {
+                e.preventDefault();
+                if (currentUser && currentUser.role !== 'admin') {
+                    showToast('Only admins can add or edit courses', 'error');
+                    return;
+                }
+                const id = document.getElementById('courseId').value || generateId();
+                const code = document.getElementById('courseCode').value.trim().toUpperCase();
+                const title = document.getElementById('courseTitle').value.trim();
+                const units = parseInt(document.getElementById('courseUnits').value);
+                if (!code || !/^PET[0-9]{3}$/.test(code)) {
+                    showToast('Course code must be in format PETNNN (e.g., PET101)', 'error');
+                    return;
+                }
+                if (!title) {
+                    showToast('Course title is required', 'error');
+                    return;
+                }
+                if (isNaN(units) || units < 1) {
+                    showToast('Credit units must be a positive number', 'error');
+                    return;
+                }
+                if (!id && coursesData.some(c => c.code === code)) {
+                    showToast('Course code already exists', 'error');
+                    return;
+                }
+                const course = { id, code, title, units };
+                coursesRef.child(id).set(course).then(() => {
+                    showToast(id ? 'Course updated successfully' : 'Course added successfully');
+                    pagination.courses.page = 1;
+                    const courseSearch = document.getElementById('courseSearch');
+                    if (courseSearch) courseSearch.value = '';
+                    clearCourseForm();
+                }).catch(error => {
+                    console.error('Error saving course:', error);
+                    showToast('Failed to save course', 'error');
+                });
+            });
+
+            const debouncedRenderCourses = debounce(() => renderSection('courses'), 300);
+            document.getElementById('courseSearch').addEventListener('input', debouncedRenderCourses);
+
+            function renderCourses() {
+                const search = document.getElementById('courseSearch')?.value.toLowerCase() || '';
+                let courses = coursesData;
+                if (cache.courses.lastSearch !== search || cache.courses.filtered.length === 0) {
+                    courses = courses.filter(c => c.code.toLowerCase().includes(search) || c.title.toLowerCase().includes(search));
+                    cache.courses.filtered = courses;
+                    cache.courses.lastSearch = search;
+                    cache.courses.sorted = [];
+                } else {
+                    courses = cache.courses.filtered;
+                }
+                if (sortState.section === 'courses' && (cache.courses.lastSort?.key !== sortState.key || cache.courses.lastSort?.ascending !== sortState.ascending)) {
+                    courses = [...courses].sort((a, b) => {
+                        const valueA = a[sortState.key];
+                        const valueB = b[sortState.key];
+                        return sortState.ascending ? (valueA.localeCompare ? valueA.localeCompare(valueB) : valueA - valueB) : (valueB.localeCompare ? valueB.localeCompare(valueA) : valueB - valueA);
+                    });
+                    cache.courses.sorted = courses;
+                    cache.courses.lastSort = { key: sortState.key, ascending: sortState.ascending };
+                } else if (cache.courses.sorted.length > 0) {
+                    courses = cache.courses.sorted;
+                }
+                renderTable('courses', courses, 'courseTable', course => `
+                    <td class="border p-2">${course.code}</td>
+                    <td class="border p-2">${course.title}</td>
+                    <td class="border p-2">${course.units}</td>
+                    <td class="border p-2">
+                        ${currentUser && currentUser.role === 'admin' ? `<button onclick="editCourse('${course.id}')" class="bg-yellow-500 text-white px-2 py-1 rounded hover:bg-yellow-600 touch-button"><i class="fa-solid fa-edit mr-2"></i> Edit</button>` : ''}
+                    </td>
+                `);
+            }
+
+            function editCourse(id) {
+                if (!currentUser || currentUser.role !== 'admin') {
+                    showToast('Only admins can edit courses', 'error');
+                    return;
+                }
+                const course = coursesData.find(c => c.id === id);
+                if (course) {
+                    document.getElementById('courseId').value = course.id;
+                    document.getElementById('courseCode').value = course.code;
+                    document.getElementById('courseTitle').value = course.title;
+                    document.getElementById('courseUnits').value = course.units;
+                    document.getElementById('courseSubmit').textContent = 'Update Course';
+                    document.getElementById('courseForm').style.display = 'block';
+                }
+            }
+
+            document.getElementById('facultyForm').addEventListener('submit', function(e) {
+                e.preventDefault();
+                if (currentUser && currentUser.role !== 'admin') {
+                    showToast('Only admins can add or edit faculty', 'error');
+                    return;
+                }
+                const id = document.getElementById('facultyId').value || generateId();
+                const staffId = document.getElementById('facultyStaffId').value.trim();
+                const name = document.getElementById('facultyName').value.trim();
+                const dept = document.getElementById('facultyDept').value;
+                if (!/^STAFF\/[0-9]{3}$/.test(staffId)) {
+                    showToast('Staff ID must be in format STAFF/NNN', 'error');
+                    return;
+                }
+                if (!name) {
+                    showToast('Faculty name is required', 'error');
+                    return;
+                }
+                if (!id && facultyData.some(f => f.staffId === staffId)) {
+                    showToast('Staff ID already exists', 'error');
+                    return;
+                }
+                const faculty = { id, name, staffId, dept };
+                facultyRef.child(id).set(faculty).then(() => {
+                    showToast(id ? 'Faculty updated successfully' : 'Faculty added successfully');
+                    pagination.faculty.page = 1;
+                    const facultySearch = document.getElementById('facultySearch');
+                    if (facultySearch) facultySearch.value = '';
+                    clearFacultyForm();
+                }).catch(error => {
+                    console.error('Error saving faculty:', error);
+                    showToast('Failed to save faculty', 'error');
+                });
+            });
+
+            const debouncedRenderFaculty = debounce(() => renderSection('faculty'), 300);
+            document.getElementById('facultySearch').addEventListener('input', debouncedRenderFaculty);
+
+            function renderFaculty() {
+                const search = document.getElementById('facultySearch')?.value.toLowerCase() || '';
+                let faculty = facultyData;
+                if (cache.faculty.lastSearch !== search || cache.faculty.filtered.length === 0) {
+                    faculty = faculty.filter(f => f.name.toLowerCase().includes(search) || f.staffId.toLowerCase().includes(search));
+                    cache.faculty.filtered = faculty;
+                    cache.faculty.lastSearch = search;
+                    cache.faculty.sorted = [];
+                } else {
+                    faculty = cache.faculty.filtered;
+                }
+                if (sortState.section === 'faculty' && (cache.faculty.lastSort?.key !== sortState.key || cache.faculty.lastSort?.ascending !== sortState.ascending)) {
+                    faculty = [...faculty].sort((a, b) => {
+                        const valueA = a[sortState.key];
+                        const valueB = b[sortState.key];
+                        return sortState.ascending ? (valueA.localeCompare ? valueA.localeCompare(valueB) : valueA - valueB) : (valueB.localeCompare ? valueB.localeCompare(valueA) : valueB - valueA);
+                    });
+                    cache.faculty.sorted = faculty;
+                    cache.faculty.lastSort = { key: sortState.key, ascending: sortState.ascending };
+                } else if (cache.faculty.sorted.length > 0) {
+                    faculty = cache.faculty.sorted;
+                }
+                renderTable('faculty', faculty, 'facultyTable', faculty => `
+                    <td class="border p-2">${faculty.name}</td>
+                    <td class="border p-2">${faculty.staffId}</td>
+                    <td class="border p-2">${faculty.dept}</td>
+                    <td class="border p-2">
+                        ${currentUser && currentUser.role === 'admin' ? `<button onclick="editFaculty('${faculty.id}')" class="bg-yellow-500 text-white px-2 py-1 rounded hover:bg-yellow-600 touch-button"><i class="fa-solid fa-edit mr-2"></i> Edit</button>` : ''}
+                    </td>
+                `);
+            }
+
+            function editFaculty(id) {
+                if (!currentUser || currentUser.role !== 'admin') {
+                    showToast('Only admins can edit faculty', 'error');
+                    return;
+                }
+                const faculty = facultyData.find(f => f.id === id);
+                if (faculty) {
+                    document.getElementById('facultyId').value = faculty.id;
+                    document.getElementById('facultyName').value = faculty.name;
+                    document.getElementById('facultyStaffId').value = faculty.staffId;
+                    document.getElementById('facultyDept').value = faculty.dept;
+                    document.getElementById('facultySubmit').textContent = 'Update Faculty';
+                    document.getElementById('facultyForm').style.display = 'block';
+                }
+            }
+
+            // Manage Users
+            document.getElementById('userForm').addEventListener('submit', function(e) {
+                e.preventDefault();
+                if (!currentUser || currentUser.role !== 'admin') {
+                    showToast('Only admins can add users', 'error');
+                    return;
+                }
+                const email = document.getElementById('userEmail').value;
+                const password = document.getElementById('userPassword').value;
+                const role = document.getElementById('userRole').value;
+                if (password.length < 6) {
+                    showToast('Password must be at least 6 characters', 'error');
+                    return;
+                }
+                auth.createUserWithEmailAndPassword(email, password).then(userCredential => {
+                    const user = userCredential.user;
+                    usersRef.child(user.uid).set({ email, role }).then(() => {
+                        showToast('User added successfully');
+                        clearUserForm();
+                        renderUsers();
+                    }).catch(error => {
+                        showToast('Failed to set user role: ' + error.message, 'error');
+                    });
+                }).catch(error => {
+                    showToast('Failed to create user: ' + error.message, 'error');
+                });
+            });
+
+            const debouncedRenderUsers = debounce(() => renderSection('users'), 300);
+
+            function renderUsers() {
+                let users = usersData;
+                if (sortState.section === 'users' && (cache.users.lastSort?.key !== sortState.key || cache.users.lastSort?.ascending !== sortState.ascending)) {
+                    users = [...users].sort((a, b) => {
+                        const valueA = a[sortState.key];
+                        const valueB = b[sortState.key];
+                        return sortState.ascending ? (valueA.localeCompare ? valueA.localeCompare(valueB) : valueA - valueB) : (valueB.localeCompare ? valueB.localeCompare(valueA) : valueB - valueA);
+                    });
+                    cache.users.sorted = users;
+                    cache.users.lastSort = { key: sortState.key, ascending: sortState.ascending };
+                } else if (cache.users.sorted.length > 0) {
+                    users = cache.users.sorted;
+                }
+                renderTable('users', users, 'userTable', user => `
+                    <td class="border p-2">${user.email}</td>
+                    <td class="border p-2">${user.role}</td>
+                `);
+            }
+
+            function renderSection(section) {
+                if (section === 'students') renderStudents();
+                else if (section === 'courses') renderCourses();
+                else if (section === 'faculty') renderFaculty();
+                else if (section === 'users') renderUsers();
+            }
+
+            auth.onAuthStateChanged(user => {
+                if (user) {
+                    currentUser = null;
+                    usersRef.child(user.uid).once('value', snapshot => {
+                        const userData = snapshot.val();
+                        if (userData) {
+                            currentUser = { uid: user.uid, email: user.email, role: userData.role };
+                            userInfo.textContent = `Logged in as ${userData.role === 'admin' ? 'Admin' : 'Student'} (${user.email})`;
+                            loginModal.style.display = 'none';
+                            document.getElementById('studentForm').style.display = currentUser.role === 'admin' ? 'block' : 'none';
+                            document.getElementById('courseForm').style.display = currentUser.role === 'admin' ? 'block' : 'none';
+                            document.getElementById('facultyForm').style.display = currentUser.role === 'admin' ? 'block' : 'none';
+                            document.getElementById('usersBtn').style.display = currentUser.role === 'admin' ? 'block' : 'none';
+                        } else {
+                            showToast('User role not found. Please contact admin.', 'error');
+                            auth.signOut();
+                        }
+                    });
+                } else {
+                    currentUser = null;
+                    loginModal.style.display = 'block';
+                    document.getElementById('usersBtn').style.display = 'none';
+                }
+            });
+
+            loginForm.addEventListener('submit', e => {
+                e.preventDefault();
+                const email = document.getElementById('loginEmail').value;
+                const password = document.getElementById('loginPassword').value;
+                auth.signInWithEmailAndPassword(email, password).catch(error => {
+                    showToast(error.message, 'error');
+                });
+            });
+
+            logoutBtn.addEventListener('click', () => {
+                auth.signOut().then(() => {
+                    showToast('Logged out successfully');
+                    userInfo.textContent = '';
+                }).catch(error => {
+                    showToast(error.message, 'error');
+                });
+            });
+
+            if (!currentUser) showSection('dashboard');
+</body>
+</html>
